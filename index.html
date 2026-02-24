@@ -159,6 +159,24 @@
   }
   .task-card:hover { border-color: #3a3a3a; }
 
+  .task-card.dragging { opacity: 0.4; }
+
+  .task-card.drag-over { border-color: var(--accent); }
+
+  .drag-handle {
+    color: var(--text-muted);
+    cursor: grab;
+    padding: 0 2px;
+    font-size: 0.85rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+  }
+
+  .task-card:hover .drag-handle { opacity: 1; }
+  
+  .drag-handle:active { cursor: grabbing; }
+
   .task-header {
     display: flex;
     align-items: center;
@@ -744,8 +762,14 @@ function render() {
     }).join('');
 
     return `
-      <div class="task-card">
+      <div class="task-card" draggable="true" data-id="${task.id}"
+      ondragstart="onDragStart(event,'${task.id}')"
+      ondragover="onDragOver(event)"
+      ondragleave="onDragLeave(event)"
+      ondrop="onDrop(event,'${task.id}')"
+      ondragend="onDragEnd(event)">
         <div class="task-header" onclick="toggleExpand('${task.id}')">
+          <span class="drag-handle" onclick="event.stopPropagation()">⠿</span>
           <div class="bubble ${progressClass(task.progress)}" title="Click to cycle progress" onclick="event.stopPropagation();cycleProgress('task','${task.id}')"></div>
           <span class="task-title">${escHtml(task.title)}</span>
           ${dl ? `<span class="task-deadline ${dl.cls}">${escHtml(dl.text)}</span>` : ''}
@@ -768,6 +792,38 @@ function render() {
 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let dragSrcId = null;
+function onDragStart(e, id) {
+  dragSrcId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => e.target.closest('.task-card').classList.add('dragging'), 0);
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onDrop(e, targetId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (dragSrcId === targetId) return;
+  const srcIdx = tasks.findIndex(t => t.id === dragSrcId);
+  const tgtIdx = tasks.findIndex(t => t.id === targetId);
+  const [moved] = tasks.splice(srcIdx, 1);
+  tasks.splice(tgtIdx, 0, moved);
+  save(); render();
+}
+
+function onDragEnd(e) {
+  dragSrcId = null;
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('dragging', 'drag-over'));
 }
 
 load().then(render);
