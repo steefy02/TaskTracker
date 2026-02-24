@@ -538,7 +538,7 @@
       <label>Notes</label>
       <textarea id="modal-notes" placeholder="Any additional notes, links, references..."></textarea>
     </div>
-    <div class="field">
+    <div class="field" id="progress-field">
       <label>Progress</label>
       <select id="modal-progress">
         <option value="not-started">Not started</option>
@@ -625,6 +625,7 @@ function openModal(mode, taskId, subtaskId) {
   document.getElementById('modal-deadline').value = '';
   document.getElementById('modal-notes').value = '';
   document.getElementById('modal-progress').value = 'not-started';
+  document.getElementById('progress-field').style.display = '';
 
   if (mode === 'task') { t.textContent = 'Add Task'; }
   else if (mode === 'subtask') { t.textContent = 'Add Subtask'; }
@@ -636,6 +637,7 @@ function openModal(mode, taskId, subtaskId) {
       document.getElementById('modal-deadline').value = task.deadline || '';
       document.getElementById('modal-notes').value = task.notes || '';
       document.getElementById('modal-progress').value = task.progress;
+      document.getElementById('progress-field').style.display = task.subtasks.length ? 'none' : '';
     }
   } else if (mode === 'edit-subtask') {
     t.textContent = 'Edit Subtask';
@@ -667,6 +669,7 @@ function saveModal() {
   } else if (modalMode === 'subtask') {
     const task = tasks.find(x => x.id === modalContext.taskId);
     if (task) task.subtasks.push({ id: Date.now().toString(), title, deadline, notes, progress });
+    if (task) syncTaskProgress(task);
     expandedTasks.add(modalContext.taskId);
   } else if (modalMode === 'edit-task') {
     const task = tasks.find(x => x.id === modalContext.taskId);
@@ -674,6 +677,7 @@ function saveModal() {
   } else if (modalMode === 'edit-subtask') {
     const task = tasks.find(x => x.id === modalContext.taskId);
     const sub = task?.subtasks.find(s => s.id === modalContext.subtaskId);
+    if (task) syncTaskProgress(task);
     if (sub) Object.assign(sub, { title, deadline, notes, progress });
   }
 
@@ -690,7 +694,7 @@ function deleteTask(id) {
 
 function deleteSubtask(taskId, subId) {
   const task = tasks.find(t => t.id === taskId);
-  if (task) task.subtasks = task.subtasks.filter(s => s.id !== subId);
+  if (task) { task.subtasks = task.subtasks.filter(s => s.id !== subId); syncTaskProgress(task); }
   save(); render();
 }
 
@@ -702,13 +706,12 @@ function toggleExpand(id) {
 
 function cycleProgress(type, taskId, subId) {
   const order = ['not-started', 'little', 'half', 'almost', 'done'];
+  const task = tasks.find(t => t.id === taskId);
   if (type === 'task') {
-    const task = tasks.find(t => t.id === taskId);
-    if (task) task.progress = order[(order.indexOf(task.progress) + 1) % order.length];
+    if (task && !task.subtasks.length) task.progress = order[(order.indexOf(task.progress) + 1) % order.length];
   } else {
-    const task = tasks.find(t => t.id === taskId);
     const sub = task?.subtasks.find(s => s.id === subId);
-    if (sub) sub.progress = order[(order.indexOf(sub.progress) + 1) % order.length];
+    if (sub) { sub.progress = order[(order.indexOf(sub.progress) + 1) % order.length]; syncTaskProgress(task); }
   }
   save(); render();
 }
@@ -824,6 +827,16 @@ function onDrop(e, targetId) {
 function onDragEnd(e) {
   dragSrcId = null;
   document.querySelectorAll('.task-card').forEach(c => c.classList.remove('dragging', 'drag-over'));
+}
+
+function syncTaskProgress(task) {
+  if (!task.subtasks.length) return;
+  const pct = task.subtasks.reduce((a, s) => a + progressWeight(s.progress), 0) / task.subtasks.length;
+  if (pct === 1) task.progress = 'done';
+  else if (pct >= 0.75) task.progress = 'almost';
+  else if (pct >= 0.5) task.progress = 'half';
+  else if (pct > 0) task.progress = 'little';
+  else task.progress = 'not-started';
 }
 
 load().then(render);
